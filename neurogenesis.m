@@ -1,77 +1,17 @@
-%Generates a network of MC and GCs
+load data264/fullNetwork.mat;
+load data264/glomeruli.mat;
+load data264/granuleCells.mat;
+load data264/mitralCells.mat;
+load data264/distance.mat;
 
-EPLvolume = 1.5e+9; % volume of EPL in micrometers cubed (Richard et al 2010)
-EPLthickness = 131; % measured thickness of EPL in micrometers
-EPLsurfarea = EPLvolume/EPLthickness; % calculates the surface assuming SA of inner and outer surfaces are approximately equal
-totalGlomNum = 140; % total number of glomeruli 
-glomDensity = totalGlomNum/EPLsurfarea; % xy-density of glomeruli
+s = size(network);
+granuleNum = max(s);
+mitralNum = min(s);
 
-% maximum radius of the OB space, modeling the space as a flattened cylinder
-rmax = 600;
+neurogen_mode = "Betweenness";
+neurogenNum = 20;
 
-% number of glomeruli based on the area of the OB space
-glomNum = round(glomDensity*(pi*rmax^2));
-
-% number of MCs per glomerulus
-glomitralNum = randi(11, 1, glomNum) + 14; % ~15-25 mitral cells per glomerulus 
-
-% total number of mitral cells 
-mitralNum = sum(glomitralNum); 
-
-% generate the array of mitral cell objects
-mitralArray(1:mitralNum) = mitral();
-
-% matrix to hold the x-y locations of the glomeruli
-glomXYarray = zeros(glomNum,3);
-
-% index for assigning properties for MCs
-currentMitralTotal = 0;
-
-% 
-for i = 1:glomNum
-    d = rmax + 1;
-    
-    r = rmax*sqrt(rand);
-    theta = 2*pi*rand;
-    glomerX = r*cos(theta);
-    glomerY = r*sin(theta);
-   
-    % record the xy-location of the glomeruli
-    glomXYarray(i,:) = [glomerX glomerY i];
-    
-    % for the MCs belonging to the given glomerulus, assign properties
-    for j = 1:glomitralNum(i)
-        mitralArray(currentMitralTotal+j) = mitralArray(currentMitralTotal+j).assignProperties(i, glomerX, glomerY, rmax, currentMitralTotal+j);
-    end
-    
-    % update the MC index
-    currentMitralTotal = currentMitralTotal + glomitralNum(i);
-end
-
-% set the target number of GCs
-granPerMit = 15; 
-granuleNum = granPerMit * mitralNum;
-
-% 53 mitral cells, 795 granule cells.
-
-% create the array to store GC objects
-granuleArray = [];
-
-% create an empty matrix to record connections (a connnection between an
-% MC and GC is recorded as 1 in the relevant entry in the network matrix,
-% is 0 otherwise)
-network = zeros(mitralNum, granuleNum);
-
-% GC index 
-granuleindex = 0;
-
-% distance matrix for synapses during simulation (
-distance = zeros(mitralNum, granuleNum);
-neurogen_mode = "None";
-
-
-while length(granuleArray) < granuleNum
-    
+while length(granuleArray) < granuleNum + neurogenNum
     % generate a new GC and assign properties
     newGranule = granule();
     newGranule = newGranule.assignProperties(rmax, neurogen_mode, mitralArray);
@@ -141,6 +81,7 @@ while length(granuleArray) < granuleNum
            synmitrals = synmitrals(randperm(length(synmitrals)));
            tempNet(:) = 0;
            tempNet(synmitrals(1:newGranule.availableSpines)) = 1;
+           disp(newGranule.availableSpines+1);
            tempDistance(synmitrals(newGranule.availableSpines+1:totalSynapses)) = -1;
         end
         % update the GC index
@@ -157,13 +98,3 @@ while length(granuleArray) < granuleNum
     
     disp(length(granuleArray));
 end
-
-% save arrays and network matrix
-save('mitralCells.mat', 'mitralArray','-v7.3');
-save('fullNetwork.mat', 'network', '-v7.3');
-save('granuleCells.mat', 'granuleArray', '-v7.3');
-save('glomeruli.mat', 'glomXYarray','-v7.3');
-save('distance.mat', 'distance','-v7.3');
-
-        
-    

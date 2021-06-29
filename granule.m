@@ -14,20 +14,72 @@ classdef granule %defines a granule cell
     end
     methods
         % Assign properties for a newly generated granule cell
-        function g = assignProperties(g, space_rmax)
+        function g = assignProperties(g, space_rmax, neurogen_mode, mitrals)
             % Layers of the OB space
             EPLthickness = 131;
             MCLthickness = 36;
             IPLthickness = 27; 
             
+            th = EPLthickness + MCLthickness + IPLthickness;
             
-            % Set the location of the bottom vertex and constrain it to
-            % fall within bounds
-            d = space_rmax+1;
-            while d > space_rmax
-                g.x = -space_rmax + 2*rand*space_rmax;
-                g.y = -space_rmax + 2*rand*space_rmax;
-                d = norm([g.x,g.y]);
+            if neurogen_mode == "None"
+                % Set the location of the bottom vertex and constrain it to
+                % fall within bounds (randomly)
+                d = space_rmax+1;
+                while d > space_rmax
+                    g.x = -space_rmax + 2*rand*space_rmax;
+                    g.y = -space_rmax + 2*rand*space_rmax;
+                    d = norm([g.x,g.y]);
+                end 
+                
+                % Set the z-position of the bottom vertex
+                g.z0 = (MCLthickness + IPLthickness) * rand;
+            
+                % Set the z-position of the top face
+                g.zmax = MCLthickness + IPLthickness + 1/2*EPLthickness + (1/2*EPLthickness*rand);   
+            else
+                % if doing neurogenesis, then find a target mitral cell
+                % to place granule cell near to and place bottom vertex
+                % as below
+                load('centralities.mat', 'Eigenvector', 'Closeness', 'Betweenness');
+                centrality_type = neurogen_mode;
+                if centrality_type == "Eigenvector"
+                    c = Eigenvector;
+                elseif centrality_type == "Closeness"
+                    c = Closeness;
+                elseif centrality_type == "Betweenness"
+                    c = Betweenness;
+                end 
+
+                % we set mu such that 80% of the samples fall in [0, 10], or in other words
+                % 80% of the time we choose the top 11 mitral cells. I chose 80 because of
+                % the observed '80-20' rule. upon solving, we get mu = ~6.21
+
+                mu = 6.21;
+                r = floor(exprnd(mu)) + 1;
+                m = c(r) + 1;
+                mc = mitrals(:, m);
+                d = space_rmax+1;
+                while d > space_rmax
+                    g.x = -space_rmax/10 + mc.x + 2*rand*space_rmax/10;
+                    g.y = -space_rmax/10 + mc.y + 2*rand*space_rmax/10;
+                    d = norm([g.x,g.y]);
+                end
+                
+                g.z0 = (MCLthickness + IPLthickness) * rand;
+                g.zmax = MCLthickness + IPLthickness + 1/2*EPLthickness + (1/2*EPLthickness*rand); 
+                % height ev is 0.668 th so if mc.z is near to 0.332th then
+                % select a g.z0 near to it. Otherwise, choose one further 
+                % so that gc can have 'full' height. 
+                % g.z0 = max(mc.z - 2*rand*abs((0.332 * th) - mc.z), MCLthickness+IPLthickness);
+                
+                % EV of height is 1/2 (mcl + ipl) + 3/4 (epl)
+                % so we do rand of th + 0.25 epl which has the same EV
+                % cap it at the total height to keep within bounds
+                % g.zmax = min(g.z0 + rand * th + 0.25 * EPLthickness, th);
+                
+                % this way, we have a decent probability of a new gc
+                % attaching to a 'desirable' mc
             end
             
             % Set the location and radius of the top face and 
@@ -56,13 +108,7 @@ classdef granule %defines a granule cell
                 end
             end
 
-            % Set the z-position of the bottom vertex
-            g.z0 = (MCLthickness + IPLthickness) * rand;
-            
-            % Set the z-position of the top face
-            g.zmax = MCLthickness + IPLthickness + 1/2*EPLthickness + (1/2*EPLthickness*rand);    
 
-            
             % determine the upper and lower bounds of the spine
             % distribution based on the volume
             volume = pi/3 * g.rmax^2 * (g.zmax -g.z0);
@@ -96,5 +142,6 @@ classdef granule %defines a granule cell
             x = g.x + r*cos(g.theta);
             y = g.y + r*sin(g.theta);
         end
+        
     end                                                     
 end
