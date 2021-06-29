@@ -3,20 +3,19 @@ import h5py
 import networkx as nx
 import matplotlib.pyplot as plt
 import os
-import scipy.io
+import scipy.io 
 
 path = os.getcwd()
 
-
 def save_data(mc):
-    """
-    Save network data corresponding to parameter 'mc' used to denote the number of mitral cells
+    '''
+    Save network data corresponding to parameter 'mc' used to denote the number of mitral cells 
     in the file. By convention, h5py transposes MATLAB arrays.
-
+    
     Note: this should be refactored to take in the radius of the OB 'rmax' instead.
-    """
+    '''
 
-    f = h5py.File(f"{path}/data{mc}/fullNetwork.mat", "r")
+    f = h5py.File(f'{path}/data{mc}/fullNetwork.mat', 'r')
     data = np.array(f.get("network"))
     G = nx.Graph()
 
@@ -30,10 +29,11 @@ def save_data(mc):
 
 
 def plot_bipartition(G, l, r):
-    """
+    '''
     Plots mitral and granule cells as a bipartite graph, with nodes in each
     independent set on either half of the plot.
-    """
+    '''
+
     pos = {}
     pos.update((node, (1, index)) for index, node in enumerate(l))
     pos.update((node, (2, index)) for index, node in enumerate(r))
@@ -41,35 +41,31 @@ def plot_bipartition(G, l, r):
     # Pretty large picture drawn, as graph usually has a lot of nodes. Adjust accordingly
 
     plt.figure(figsize=(80, 80))
-    nx.draw(G, pos=pos, node_size=60, font_size=8)
+    nx.draw(G, pos=pos, node_size=60,font_size=8)
     plt.savefig(os.getcwd() + "/graph_plot.png")
-
-
+    
 def compute_and_save_centralities(G):
-    """
+    ''' 
     Computes the centralities of the nodes and saves them in an easily readable format
-    This saves compute time, as computing betweenness and closeness centralities is
+    This saves compute time, as computing betweenness and closeness centralities is 
     expensive.
-    """
+    '''
 
-    eig = sorted(
-        nx.eigenvector_centrality_numpy(G).items(), reverse=True, key=lambda x: x[1]
-    )
-    bet = sorted(nx.betweenness_centrality(G).items(), reverse=True, key=lambda x: x[1])
-    clo = sorted(nx.closeness_centrality(G).items(), reverse=True, key=lambda x: x[1])
+    eig = sorted(nx.eigenvector_centrality_numpy(G).items(), reverse=True,key = lambda x: x[1])
+    bet = sorted(nx.betweenness_centrality(G).items(), reverse=True,key = lambda x: x[1])
+    clo = sorted(nx.closeness_centrality(G).items(), reverse=True,key = lambda x: x[1])
 
-    np.save(path + "/closeness.npy", np.array(clo))
-    np.save(path + "/betweenness.npy", np.array(bet))
-    np.save(path + "/eigenvector.npy", np.array(eig))
+    np.save(path + '/numpy/closeness.npy', np.array(clo))
+    np.save(path + '/numpy/betweenness.npy', np.array(bet))
+    np.save(path + '/numpy/eigenvector.npy', np.array(eig))
 
-
-def plot_degree_dist(mitral, granule):
-    """
+def plot_degree_dist(G, mitral, granule):
+    '''
     Plot degree (number of neighbors) distributions of mitral and granule cells.
-    """
+    '''
 
-    mitral_dist = {k: G.degree[k] for k in mitral}
-    gc_dist = {k: G.degree[k] for k in granule}
+    mitral_dist = {k : G.degree[k] for k in mitral}
+    gc_dist = {k : G.degree[k] for k in granule}
 
     plt.hist(mitral_dist.values())
     plt.xlabel("Degree")
@@ -83,24 +79,31 @@ def plot_degree_dist(mitral, granule):
     plt.show()
 
 
-# Read graph
+def read_graph(k):
+    '''
+    Read graph and output graph and both independent sets
+    '''
 
-G = nx.read_graphml(path + "/graph264.graphml")
-granule, mitral = [
-    [n for n in G.nodes if G.nodes[n]["bipartite"] == i] for i in range(2)
-]
-
-# Load saved centralities
-
-eigenvector = np.load(path + "/eigenvector.npy")
-closeness = np.load(path + "/closeness.npy")
-betweenness = np.load(path + "/betweenness.npy")
-
-centralities = [eigenvector, closeness, betweenness]
-
-for c in centralities:
-    c = list(filter(lambda x: "Granule" not in x[0], c))
-    c = list(map(lambda x: int(x[0][11:].strip()), c))
+    G = nx.read_graphml(path + f"/graph{k}.graphml")
+    granule, mitral = [[n for n in G.nodes if G.nodes[n]['bipartite'] == i] for i in range(2)]
+    return G, granule, mitral
 
 
-print(centralities)
+def load_and_save_centralities():
+    '''
+    Load centralities from numpy format, parse them, and convert to MATLAB readable data (.mat). 
+    This can be merged with with 'compute_and_save_centralities()'.
+    '''
+    
+    eigenvector = np.load(path + '/numpy/eigenvector.npy')
+    closeness = np.load(path + '/numpy/closeness.npy')
+    betweenness = np.load(path + '/numpy/betweenness.npy')
+
+    centralities = {"Eigenvector" : eigenvector, "Closeness" : closeness, "Betweenness": betweenness}
+
+    for k, c in centralities.items():
+        c = list(filter(lambda x : "Granule" not in x[0], c))
+        c = list(map(lambda x : int(x[0][11:].strip()), c))
+        centralities[k] = c
+
+    scipy.io.savemat(f"centralities.mat",  centralities)
