@@ -5,4 +5,4 @@ Computational spatial model of the olfactory bulb with capability for neurogenes
 
 Using a computational model of the olfactory bulb (due to David Kersen) with some biological/biophysical simplifications to generate networks of Mitral and Granule cells.
 
-Neurogenesis modeled to maximise objective functions in graph theory/information theory and validated using unsupervised/Hebbian learning to achieve maximal odor differentiation (and higher order properties)
+Neurogenesis modeled to maximise a variety of odor differentiation/identification factors using objective functions in graph theory and information theory
