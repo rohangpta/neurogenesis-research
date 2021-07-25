@@ -136,13 +136,45 @@ odorIndicesMatrix = zeros(numOdors, length(glomeruli));
 rmax = 300;
 
 % Generate your odors
-for i = 1:numOdors
-    J = randperm(glomNum);
-    odorGlomNum = 4 + randi(6);    
-    for j = 1:odorGlomNum
-        odorIndicesMatrix(i,J(j)) = 1;
+% for i = 1:numOdors
+%     J = randperm(glomNum);
+%     odorGlomNum = 4 + randi(6);    
+%     for j = 1:odorGlomNum
+%         odorIndicesMatrix(i,J(j)) = 1;
+%     end
+%     [odorAmpMatrix(:,i), odorPhaseMatrix(:,i)] = odorGenerator(odorIndicesMatrix(i,:), glomArray, glomeruli, mitralNum);
+% end
+
+odor_Amp_basis = zeros(mitralNum,1);
+odor_Phase_basis = zeros(mitralNum,1);
+for i = 1:length(glomeruli)
+    mean_phase = 2*pi*rand;
+    meanInput = 150+450*rand;
+    R = find(glomArray == i);
+    odor_Amp_basis(R) = normrnd(meanInput,meanInput/5,length(R),1);
+    odor_Phase_basis(R) = normrnd(mean_phase,pi/4,length(R),1);   
+    
+end
+
+odorGlomNum = 8;
+odorIndices = zeros(numOdors, odorGlomNum);
+for i = 1:10
+    odorIndices(i,:) = 1+(i-1):8+(i-1);
+end
+
+for t = 1:numOdors
+    for i = 1:length(glomeruli)
+        R = find(glomArray == i);
+        if sum(ismember(i, odorIndices(t,:)))
+            odorAmpMatrix(R,t) = odor_Amp_basis(R);
+            odorPhaseMatrix(R,t) = odor_Phase_basis(R);
+        else
+            mean_phase = 2*pi*rand;
+            meanInput = rand*150;
+            odorAmpMatrix(R,t) = normrnd(meanInput,meanInput/5,length(R),1);
+            odorPhaseMatrix(R,t) = normrnd(mean_phase,pi/4,length(R),1);
+        end
     end
-    [odorAmpMatrix(:,i), odorPhaseMatrix(:,i)] = odorGenerator(odorIndicesMatrix(i,:), glomArray, glomeruli, mitralNum);
 end
 
 
@@ -267,8 +299,8 @@ for gene = 1:numGeneses
 
             % assign the new connections to the appropriate entry in the
             % network for the GC
-            network(:, addedNum) = tempNet;
-            distance(:,addedNum) = tempDistance;
+            network(:, granuleNum+addedNum) = tempNet;
+            distance(:,granuleNum+addedNum) = tempDistance;
 
             % update the GC array
             addedNum = addedNum + 1;
@@ -323,7 +355,7 @@ for gene = 1:numGeneses
     
     granuleNum = granuleNum + targetNum; %update total number of GCs in the network
     
-    fname = sprintf('immortalResults.mat');
+    fname = sprintf('immortalResultsSimpleOdors.mat');
     save(fname,'spikeTrainRecord','odorAmpMatrix', 'odorPhaseMatrix', 'gSpikes','networkList','-v7.3');
 end
 
@@ -382,9 +414,6 @@ function [mSpikeTrain, mVolt, gVolt, gSpikes] = simulator(network, mParam, gPara
     % Number of mitral cells and granule cells
     [mitralNum,granuleNum] = size(network);
     
-    % set number of GCs to record for voltage traces
-    granuleNumRecord = 1000;
-    
     % unpack MC and GC parameters
     mVr = mParam(1,:); mVt = mParam(2,:);
     a_m = mParam(3,:); b_m = mParam(4,:); k_m = mParam(5,:); c_m = mParam(6,:); d_m = mParam(7,:);
@@ -407,10 +436,7 @@ function [mSpikeTrain, mVolt, gVolt, gSpikes] = simulator(network, mParam, gPara
     gV = ones(1, granuleNum) .* gVr;
     gU = zeros(1,granuleNum);
     
-    % set variables to record voltages
-    mVolt = zeros(mitralNum,length(tspan));
-    gVolt = zeros(granuleNumRecord, length(tspan));
-    
+
     % set synaptic gating variables 
     mIntegG = zeros(mitralNum, granuleNum);
     gIntegN = zeros(mitralNum, granuleNum);
@@ -433,12 +459,7 @@ function [mSpikeTrain, mVolt, gVolt, gSpikes] = simulator(network, mParam, gPara
             gSpikes(gFired) = gSpikes(gFired) + 1;
         end
         mSpikeTrain(mFired,t) = 1;
-        
-        % record voltage
-        mVolt(:,t) = mV;
-        
-        % record GC voltage
-        gVolt(:,t) = gV(1:granuleNumRecord);   
+ 
 
         % if in odor presentation, give odor input, otherwise give regular respiratory input 
         if tspan(t) > beginOdor && tspan(t) <= endOdor          
