@@ -146,13 +146,39 @@ fileID = fopen('trialResults.txt','w');
 odorAmpMatrix = zeros(mitralNum,numOdors);
 odorPhaseMatrix = zeros(mitralNum, numOdors);
 
-% glomeruli for your odors, where each row is a different odor
-odorIndicesMatrix = zeros(numOdors, length(glomeruli));
-
-% Generate your odors
-for i = 1:numOdors
-    [odorAmpMatrix(:,i), odorPhaseMatrix(:,i)] = odorGenerator(odorIndicesMatrix(i,:), glomArray, glomeruli, mitralNum);
+odor_Amp_basis = zeros(mitralNum,1);
+odor_Phase_basis = zeros(mitralNum,1);
+for i = 1:length(glomeruli)
+    mean_phase = 2*pi*rand;
+    meanInput = 150+450*rand;
+    R = find(glomArray == i);
+    odor_Amp_basis(R) = normrnd(meanInput,meanInput/5,length(R),1);
+    odor_Phase_basis(R) = normrnd(mean_phase,pi/4,length(R),1);   
+    
 end
+
+odorGlomNum = 8;
+odorIndices = zeros(numOdors, odorGlomNum);
+for i = 1:10
+    odorIndices(i,:) = 1+(i-1):8+(i-1);
+end
+
+for t = 1:numOdors
+    for i = 1:length(glomeruli)
+        R = find(glomArray == i);
+        if sum(ismember(i, odorIndices(t,:)))
+            odorAmpMatrix(R,t) = odor_Amp_basis(R);
+            odorPhaseMatrix(R,t) = odor_Phase_basis(R);
+        else
+            mean_phase = 2*pi*rand;
+            meanInput = rand*150;
+            odorAmpMatrix(R,t) = normrnd(meanInput,meanInput/5,length(R),1);
+            odorPhaseMatrix(R,t) = normrnd(mean_phase,pi/4,length(R),1);
+        end
+    end
+end
+
+
     
 
 % Generates a feedback pattern to GCs (ignore for now)
