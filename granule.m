@@ -41,7 +41,7 @@ classdef granule %defines a granule cell
                 % if doing neurogenesis, then find a target mitral cell
                 % to place granule cell near to and place bottom vertex
                 % as below
-                load('centralities.mat', 'Eigenvector', 'Closeness', 'Betweenness');
+                load(sprintf('data%d/centralities.mat', space_rmax), 'Eigenvector', 'Closeness', 'Betweenness');
                 centrality_type = neurogen_mode;
                 if centrality_type == "Eigenvector"
                     c = Eigenvector;
@@ -56,18 +56,19 @@ classdef granule %defines a granule cell
                 % the observed '80-20' rule. upon solving, we get mu = ~6.21
 
                 mu = 6.21;
-                r = floor(exprnd(mu)) + 1;
+                r = min(floor(exprnd(mu)) + 1, max(size(mitrals)));
                 m = c(r) + 1;
                 mc = mitrals(:, m);
                 d = space_rmax+1;
                 while d > space_rmax
-                    g.x = -space_rmax/10 + mc.x + 2*rand*space_rmax/10;
-                    g.y = -space_rmax/10 + mc.y + 2*rand*space_rmax/10;
+                    g.x = -space_rmax/15 + mc.x + 2*rand*space_rmax/15;
+                    g.y = -space_rmax/15 + mc.y + 2*rand*space_rmax/15;
                     d = norm([g.x,g.y]);
                 end
                 
                 g.z0 = (MCLthickness + IPLthickness) * rand;
-                g.zmax = MCLthickness + IPLthickness + 1/2*EPLthickness + (1/2*EPLthickness*rand); 
+                g.zmax = MCLthickness + IPLthickness + 1/2*EPLthickness + (1/2*EPLthickness*rand);
+                
                 % height ev is 0.668 th so if mc.z is near to 0.332th then
                 % select a g.z0 near to it. Otherwise, choose one further 
                 % so that gc can have 'full' height. 

@@ -3,11 +3,11 @@
 EPLvolume = 1.5e+9; % volume of EPL in micrometers cubed (Richard et al 2010)
 EPLthickness = 131; % measured thickness of EPL in micrometers
 EPLsurfarea = EPLvolume/EPLthickness; % calculates the surface assuming SA of inner and outer surfaces are approximately equal
-totalGlomNum = 140; % total number of glomeruli 
+totalGlomNum = 1800; % total number of glomeruli 
 glomDensity = totalGlomNum/EPLsurfarea; % xy-density of glomeruli
 
 % maximum radius of the OB space, modeling the space as a flattened cylinder
-rmax = 600;
+rmax = 50;
 
 % number of glomeruli based on the area of the OB space
 glomNum = round(glomDensity*(pi*rmax^2));
@@ -18,8 +18,11 @@ glomitralNum = randi(11, 1, glomNum) + 14; % ~15-25 mitral cells per glomerulus
 % total number of mitral cells 
 mitralNum = sum(glomitralNum); 
 
+
 % generate the array of mitral cell objects
+mitralArray = mitral.empty(mitralNum, 0);
 mitralArray(1:mitralNum) = mitral();
+
 
 % matrix to hold the x-y locations of the glomeruli
 glomXYarray = zeros(glomNum,3);
@@ -52,7 +55,8 @@ end
 granPerMit = 15; 
 granuleNum = granPerMit * mitralNum;
 
-% 53 mitral cells, 795 granule cells.
+disp(granuleNum);
+disp(mitralNum);
 
 % create the array to store GC objects
 granuleArray = [];
@@ -158,12 +162,13 @@ while length(granuleArray) < granuleNum
     disp(length(granuleArray));
 end
 
+mkdir(sprintf('data%d', rmax));
 % save arrays and network matrix
-save('mitralCells.mat', 'mitralArray','-v7.3');
-save('fullNetwork.mat', 'network', '-v7.3');
-save('granuleCells.mat', 'granuleArray', '-v7.3');
-save('glomeruli.mat', 'glomXYarray','-v7.3');
-save('distance.mat', 'distance','-v7.3');
+save(sprintf('data%d/mitralCells.mat', rmax), 'mitralArray','-v7.3');
+save(sprintf('data%d/fullNetwork.mat', rmax), 'network', '-v7.3');
+save(sprintf('data%d/granuleCells.mat', rmax), 'granuleArray', '-v7.3');
+save(sprintf('data%d/glomeruli.mat', rmax), 'glomXYarray','-v7.3');
+save(sprintf('data%d/distance.mat', rmax), 'distance','-v7.3');
 
         
     

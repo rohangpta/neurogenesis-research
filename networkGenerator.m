@@ -19,6 +19,7 @@ glomitralNum = randi(11, 1, glomNum) + 14; % ~15-25 mitral cells per glomerulus
 mitralNum = sum(glomitralNum); 
 
 % generate the array of mitral cell objects
+mitralArray = [];
 mitralArray(1:mitralNum) = mitral();
 
 % matrix to hold the x-y locations of the glomeruli

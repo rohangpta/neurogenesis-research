@@ -1,9 +1,10 @@
 rng shuffle
 
 % Load network and distance matrices and glomeruli
-load('.mat') % Load your network data
-load('.mat') % Load you distance data
-load('.mat') % Load your glomeruli data
+load('fullNetworkControl.mat') % Load your network data
+load('distanceControl.mat') % Load you distance data
+load('glomeruliControl.mat') % Load your glomeruli data
+load('mitralCellsControl.mat')
 
 % Number of mitral cells and granule cells
 [mitralNum,granuleNum] = size(network);
@@ -11,6 +12,7 @@ load('.mat') % Load your glomeruli data
 % Set up the glomeruli (just an array from 1 to the total number of
 % glomeruli)
 glomeruli = unique(glomArray);
+glomNum = length(glomeruli);
 
 % Intrinsic MC and GC parameters
 mParam = zeros(9, mitralNum);
@@ -43,22 +45,6 @@ Lmat = repmat(L,[1,granuleNum]);
 % MC synaptic parameters 
 mGABA = normrnd(0.13,0.13/10,mitralNum,granuleNum).* exp(-distance./Lmat); % GABA adjusted for distance
 tauG_m = normrnd(18,18/10,mitralNum, granuleNum); % tau_GABA
-
-
-% number of external MC receptors (ignore)
-numRec_AMPA = 1;
-numRec_NMDA = 1;
-
-% number of external GC receptors (ignore)
-numRec_AMPA_g = 1;
-numRec_NMDA_g = 1;
-
-% External odor input MC parameters (ignore)
-mAMPA = normrnd(6.7,6.7/10,mitralNum, numRec_AMPA); % external g_AMPA 
-tauA_m = normrnd(14.3108,14.3108/10,mitralNum, numRec_AMPA); % external tau_AMPA
-mNMDA = normrnd(12,12/10,mitralNum, numRec_NMDA); % external g_NMDA
-tauNr_m = normrnd(13,13/10,mitralNum, numRec_NMDA); % external tau_NMDA_rise
-tauNd_m = normrnd(70,70/10,mitralNum, numRec_NMDA); % external tau_NMDA_decay
 
 
 % Establish the intrinsic granule cell parameters
@@ -102,13 +88,6 @@ tauNd_g = normrnd(80,80/10,mitralNum,granuleNum); % tau_NMDA_decay
 gAMPA = normrnd(0.73,0.73/10,mitralNum, granuleNum); % g_AMPA
 gNMDA = normrnd(0.84,0.84/10,mitralNum, granuleNum); % g_NMDA
 
-% GC cortical feedback parameters (ignore)
-gAMPAx = normrnd(0.75,0.75/10,granuleNum, numRec_AMPA_g); % excitatory feedback conductance (AMPA)
-tauAx_g = normrnd(1.735,1.735/10,granuleNum, numRec_AMPA_g); %excitatory feedback time constant (AMPA)
-gNMDAx = normrnd(18,18/10,granuleNum,numRec_NMDA_g); %excitatory feedback conductance (NMDA)
-tauNrx_g = normrnd(3,3/10,granuleNum,numRec_NMDA_g); %excitatory feedback rise time constant (NMDA)
-tauNdx_g = normrnd(55,55/10,granuleNum, numRec_NMDA_g); %excitatory feedback decay time constant (NMDA)
-
 
 
 %Find MCs belonging to each glomeruli and assign a respiratory input between
@@ -130,8 +109,12 @@ end
 % number of odors you want to make
 numOdors = 10;
 
+% rounds of neurogenesis
+numGeneses = 10;
+
 % cell array to hold the spike trains (like a python list)
-spikeTrainRecord = cell(1,numOdors);
+spikeTrainRecord = cell(numGeneses,numOdors);
+gSpikes = cell(numGeneses,numOdors);
 feedbackRecord = cell(1, numOdors);
 
 % set the respiratory rates
@@ -146,40 +129,23 @@ fileID = fopen('trialResults.txt','w');
 odorAmpMatrix = zeros(mitralNum,numOdors);
 odorPhaseMatrix = zeros(mitralNum, numOdors);
 
-odor_Amp_basis = zeros(mitralNum,1);
-odor_Phase_basis = zeros(mitralNum,1);
-for i = 1:length(glomeruli)
-    mean_phase = 2*pi*rand;
-    meanInput = 150+450*rand;
-    R = find(glomArray == i);
-    odor_Amp_basis(R) = normrnd(meanInput,meanInput/5,length(R),1);
-    odor_Phase_basis(R) = normrnd(mean_phase,pi/4,length(R),1);   
-    
-end
+% glomeruli for your odors, where each row is a different odor
+odorIndicesMatrix = zeros(numOdors, length(glomeruli));
 
-odorGlomNum = 8;
-odorIndices = zeros(numOdors, odorGlomNum);
-for i = 1:10
-    odorIndices(i,:) = 1+(i-1):8+(i-1);
-end
+% for setting granule cell
+rmax = 300;
 
-for t = 1:numOdors
-    for i = 1:length(glomeruli)
-        R = find(glomArray == i);
-        if sum(ismember(i, odorIndices(t,:)))
-            odorAmpMatrix(R,t) = odor_Amp_basis(R);
-            odorPhaseMatrix(R,t) = odor_Phase_basis(R);
-        else
-            mean_phase = 2*pi*rand;
-            meanInput = rand*150;
-            odorAmpMatrix(R,t) = normrnd(meanInput,meanInput/5,length(R),1);
-            odorPhaseMatrix(R,t) = normrnd(mean_phase,pi/4,length(R),1);
-        end
+% Generate your odors
+for i = 1:numOdors
+    J = randperm(glomNum);
+    odorGlomNum = 4 + randi(6);    
+    for j = 1:odorGlomNum
+        odorIndicesMatrix(i,J(j)) = 1;
     end
+    [odorAmpMatrix(:,i), odorPhaseMatrix(:,i)] = odorGenerator(odorIndicesMatrix(i,:), glomArray, glomeruli, mitralNum);
 end
 
 
-    
 
 % Generates a feedback pattern to GCs (ignore for now)
 FB_frac = 0.25; % fraction of GCs targeted
@@ -189,33 +155,183 @@ GC_order = randperm(granuleNum);
 FB_cells = GC_order(1:FBnum); % select GCs 
 gFeedback1(FB_cells) = rand(length(FB_cells),1) * 100; % set feedback strength to each GC
 
+beginOdor = 0/fnorm; % adjust numerator for how much respiraation (i.e. no odor breaths) you want before odor input
+endOdor = beginOdor + 2/fodor; % adjust numerator for how long you want the sniffing to go on - I recommend at least 2
+beginFB = 0; % when do you want feedback to begin - ignore for now
+
+replaceFrac = 0.1;
+replaceNum = round(replaceFrac*granuleNum);
+
+networkList = cell(1,numGeneses);
+
+for gene = 1:numGeneses   
+    networkList{gene} = network;
+    gTotal = zeros(granuleNum,1);
+    for odor = 1:numOdors
+        % simulate without feedback
+        [spikeTrainRecord{gene, odor}, ~, ~, gSpikes{gene,odor}]  = simulator(network, mParam, gParam,...
+            mResp_Amp, mResp_Phase, fnorm, odorAmpMatrix(:,odor), odorPhaseMatrix(:,odor), fodor, zeros(granuleNum,1), beginOdor, beginFB, endOdor,...
+            mGABA, tauG_m,...
+            tauA_g, tauNr_g, tauNd_g, gAMPA, gNMDA);
+        
+
+        % simulate with feedback
+    %     [spikeTrainRecord{2, trial}, ~, ~, ~]  = simulator(network, mParam, gParam,...
+    %         mResp_Amp, mResp_Phase, fnorm, mOdor_Amp, mOdor_Phase, fodor, gFeedback1, beginOdor, beginFB, endOdor,...
+    %         mGABA, tauG_m, mAMPA, tauA_m, mNMDA, tauNr_m, tauNd_m,...
+    %         tauA_g, tauNr_g, tauNd_g, gAMPA, gNMDA,...
+    %         tauAx_g, tauNrx_g, tauNdx_g, gAMPAx, gNMDAx);
+        
+        formatSpec = 'Trial is %d,%d\n';
+        fprintf(fileID, formatSpec, gene, odor);
+        
+        gTotal = gTotal + gSpikes{gene,odor};
+    end
     
-for odor = 1:numOdors
-    beginOdor = 0/fnorm; % adjust numerator for how much respiraation (i.e. no odor breaths) you want before odor input
-    endOdor = beginOdor + 6/fodor; % adjust numerator for how long you want the sniffing to go on - I recommend at least 2
-    beginFB = 0; % when do you want feedback to begin - ignore for now
+    [~,I] = sortrows(gTotal);
+    replaceIndices = I(1:replaceNum);
 
+    network(:,replaceIndices) = 0;
+    distance(:,replaceIndices) = 0;
+    
+    addedNum = 0;
+    
+    while addedNum < replaceNum
+    
+        % generate a new GC and assign properties
+        newGranule = granule();
+        newGranule = newGranule.assignProperties(rmax);
 
-    % simulate without feedback
-    [spikeTrainRecord{odor}, ~, ~, ~]  = simulator(network, mParam, gParam,...
-        mResp_Amp, mResp_Phase, fnorm, odorMatrixAmp(:,odor), odorMatrixPhase(:,odor), fodor, zeros(granuleNum,1), beginOdor, beginFB, endOdor,...
-        mGABA, tauG_m, mAMPA, tauA_m, mNMDA, tauNr_m, tauNd_m,...
-        tauA_g, tauNr_g, tauNd_g, gAMPA, gNMDA,...
-        tauAx_g, tauNrx_g, tauNdx_g, gAMPAx, gNMDAx);
+        % generate an empty matrix representing potential connections between
+        % the MCs of the network and the new GC
+        tempNet = zeros(mitralNum,1);
+        tempDistance = ones(mitralNum,1)*-1;
 
-    % simulate with feedback
-%     [spikeTrainRecord{2, trial}, ~, ~, ~]  = simulator(network, mParam, gParam,...
-%         mResp_Amp, mResp_Phase, fnorm, mOdor_Amp, mOdor_Phase, fodor, gFeedback1, beginOdor, beginFB, endOdor,...
-%         mGABA, tauG_m, mAMPA, tauA_m, mNMDA, tauNr_m, tauNd_m,...
-%         tauA_g, tauNr_g, tauNd_g, gAMPA, gNMDA,...
-%         tauAx_g, tauNrx_g, tauNdx_g, gAMPAx, gNMDAx);
+        % for each MC, determine the probability of synapse with the new GC
+        for j = 1:mitralNum
 
-    formatSpec = 'Trial is %d\n';
-    fprintf(fileID, formatSpec, odor);
+            % set the MC
+            mitralCell = mitralArray(j);
 
-    fname = sprintf('simulationResults.mat');
-    save(fname,'spikeTrainRecord','gFeedback1','-v7.3');
+            % calculate the total pre-existing synapses 
+            deadSpace = sum(network(j,:));
+
+            % determine the location of the center of the GC cone at the height
+            % of the MC
+            [g_loc_x, g_loc_y] = newGranule.calculateLocation(mitralCell.z);
+
+            % calculate the radius of the GC cone at the height of the MC
+            g_radius = newGranule.calculateRadius(mitralCell.z);
+
+            % calculate the distance between the GC cone and MC at the height
+            % of the MC
+            s = norm([mitralCell.x, mitralCell.y] - [g_loc_x, g_loc_y]);
+
+            % if the MC and GC are in range of one another, calculate the
+            % average number of synapses
+            if s < mitralCell.radius + g_radius && mitralCell.z > newGranule.z0 && mitralCell.z < newGranule.zmax
+
+                % the average number of synapses for the MC/GC pair
+                lambda = synProb(newGranule, mitralCell, deadSpace, g_radius, s);
+
+                % calculate the probability of synapse assuming a Poisson
+                % distribution
+                prob = 1 - exp(-lambda);
+
+                % sample the given probability and assign synaptic distance
+                if rand < prob
+                    tempNet(j,1) = 1;
+                    while tempDistance(j,1) == -1
+                       r = rand*mitralCell.radius;
+                       theta = rand * 2 * pi;
+                       x_r = r*cos(theta);
+                       y_r = r*sin(theta);
+                       if norm([x_r,y_r] - [s, 0]) < g_radius
+                           tempDistance(j,1) = r;
+                       end
+                    end       
+                end
+            end
+        end
+    
+        % calculate the total number of synapses the GC has made and
+        % incorporate the new GC if it is greater than 0
+        totalSynapses = sum(tempNet(:,1));
+
+        if totalSynapses > 0
+            % if the total number of synapses is greater than the number of
+            % available spines, select a random subset of MCs equal to the
+            % number of available spines to be incorporated into the network
+            if totalSynapses > newGranule.availableSpines
+               synmitrals = find(tempNet);
+               synmitrals = synmitrals(randperm(length(synmitrals)));
+               tempNet(:) = 0;
+               tempNet(synmitrals(1:newGranule.availableSpines)) = 1;
+               tempDistance(synmitrals(newGranule.availableSpines+1:totalSynapses)) = -1;
+            end
+
+            % assign the new connections to the appropriate entry in the
+            % network for the GC
+            network(:, replaceIndices(i)) = tempNet;
+            distance(:,replaceIndices(i)) = tempDistance;
+
+            % update the GC array
+            addedNum = addedNum + 1;
+        end
+    end
+    
+        % Establish the intrinsic granule cell parameters
+    for i = 1:replaceNum
+        while gParam(1,replaceIndices(i)) >= gParam(2,replaceIndices(i)) || gParam(2,replaceIndices(i)) - gParam(1,replaceIndices(i)) < 20
+            gParam(1,replaceIndices(i)) = normrnd(-71,71/10); % gVr (resting potential)
+            gParam(2,replaceIndices(i)) = normrnd(-39,39/10); % gVt (threshold potential)
+        end
+    end
+    gParam(3,replaceIndices) = normrnd(0.01,0.01/10,1,replaceNum); %a_g (Izhikevich parameter a)
+
+    for i = 1:replaceNum
+        % Establish Izhikevich parameters b and k based on rheobase and input resistance
+        rheobase = 0;
+        inres = -1;
+        while (rheobase < 10 || rheobase > 70 || inres < 0.25 || inres > 1.5) || b > 0
+            b = normrnd(-2/15,2/10); 
+            k = normrnd(1/15,1/10);
+            rheobase = (b+k*(-gParam(1,replaceIndices(i))+gParam(2,replaceIndices(i))))^2/(4*k);
+            inres = 1/(b - k*(gParam(1,replaceIndices(i))-gParam(2,replaceIndices(i))));
+        end
+        gParam(4,replaceIndices(i)) = b; %b_g (Izhekevich parameter b)
+        gParam(5,replaceIndices(i)) = k; %k_g (Izhikevich parameter k)
+    end
+
+    for i = 1:replaceNum
+        % Establish Izhikevich parameter c and ensure it is not above the
+        % threshold potential
+        while gParam(6,replaceIndices(i)) >= gParam(2,replaceIndices(i))
+            gParam(6,replaceIndices(i)) = normrnd(-75,75/10); %c_g (Izhikevich parameter c)
+        end
+    end
+
+    gParam(7,replaceIndices) = normrnd(1.2,1.2/10,1,replaceNum); %d_g (Izhikevich parameter d)
+    gParam(8,replaceIndices) = normrnd(48,48/10,1,replaceNum); %cap_g (capacitance)
+
+    % GC synaptic parameters
+    tauA_g(:, replaceIndices) = normrnd(5.5,5.5/10,mitralNum,replaceNum); % tau_AMPA
+    tauNr_g(:, replaceIndices) = normrnd(10,10/10,mitralNum,replaceNum); % tau_NMDA_rise
+    tauNd_g(:, replaceIndices) = normrnd(80,80/10,mitralNum,replaceNum); % tau_NMDA_decay
+    gAMPA(:, replaceIndices) = normrnd(0.73,0.73/10,mitralNum, replaceNum); % g_AMPA
+    gNMDA(:, replaceIndices) = normrnd(0.84,0.84/10,mitralNum, replaceNum); % g_NMDA
+    
+    % MC synaptic parameters 
+    mGABA(:, replaceIndices) = normrnd(0.13,0.13/10,mitralNum,replaceNum).* exp(-distance(:,replaceIndices)./Lmat(:,replaceIndices)); % GABA adjusted for distance
+    tauG_m(:,replaceIndices) = normrnd(18,18/10, mitralNum, replaceNum); % tau_GABA
+
+    fname = sprintf('controlResults.mat');
+    save(fname,'spikeTrainRecord','odorAmpMatrix', 'odorPhaseMatrix', 'gSpikes','networkList','-v7.3');
 end
+
+    
+
+    
 
 
 
@@ -224,7 +340,7 @@ function [mOdor_Amp, mOdor_Phase] = odorGenerator(odorIndices, glomArray, glomer
 
     mOdor_Amp = zeros(mitralNum,1);
     mOdor_Phase = zeros(mitralNum,1);
-    %Find MCs belonging to each glomeruli   and assign an odor input between
+    %Find MCs belonging to each glomeruli and assign an odor input between
     %0 and maximum inputs 
     for i = 1:length(glomeruli)
         mean_phase = 2*pi*rand;
@@ -232,7 +348,7 @@ function [mOdor_Amp, mOdor_Phase] = odorGenerator(odorIndices, glomArray, glomer
         if odorIndices(i) == 1
 
             % input strength
-            meanInput = 400+200*rand; % you can make this a vector if you want to have different strengths for each glomerulus
+            meanInput = 150+450*rand; % you can make this a vector if you want to have different strengths for each glomerulus
             mOdor_Amp(R) = normrnd(meanInput,meanInput/5,length(R),1);
 
             % phase of input
@@ -253,9 +369,8 @@ end
 
 function [mSpikeTrain, mVolt, gVolt, gSpikes] = simulator(network, mParam, gParam,...
     mResp_Amp, mResp_Phase, fnorm, mOdor_Amp, mOdor_Phase, fodor, gFeedback, beginOdor, beginFB, endOdor,...
-    mGABA, tauG_m, mAMPA, tauA_m, mNMDA, tauNr_m, tauNd_m,...
-    tauA_g, tauNr_g, tauNd_g, gAMPA, gNMDA,...
-    tauAx_g, tauNrx_g, tauNdx_g, gAMPAx, gNMDAx)
+    mGABA, tauG_m, ...
+    tauA_g, tauNr_g, tauNd_g, gAMPA, gNMDA)
 
     % time step is 0.1 ms
     TS = 0.1; 
@@ -287,14 +402,6 @@ function [mSpikeTrain, mVolt, gVolt, gSpikes] = simulator(network, mParam, gPara
     
     % magnesium concentration
     mag = 1;
-    
-    % number of external MC receptors
-    numRec_AMPA = 1;
-    numRec_NMDA = 1;
-    
-    % number of external GC receptors
-    numRec_AMPA_g = 1;
-    numRec_NMDA_g = 1;
 
     % cells start at their resting potentials with 0 recoveery current
     mV = ones(1, mitralNum) .* mVr;
@@ -312,23 +419,9 @@ function [mSpikeTrain, mVolt, gVolt, gSpikes] = simulator(network, mParam, gPara
     gIntegA = zeros(mitralNum, granuleNum);
     gX = zeros(mitralNum, granuleNum);
     
-    % set external MC gating variables
-    mX = zeros(mitralNum, numRec_NMDA);
-    mIntegN = zeros(mitralNum, numRec_NMDA);
-    mIntegA = zeros(mitralNum, numRec_AMPA);
-    
-    % set external GC gating variables
-    gXx = zeros(granuleNum, numRec_NMDA_g);
-    gIntegNx = zeros(granuleNum, numRec_NMDA_g);
-    gIntegAx = zeros(granuleNum, numRec_AMPA_g);
-    
     % record MC and GC spikes
     mSpikeTrain = zeros(mitralNum,length(tspan));
-    gSpikes = cell(1,granuleNum);
-    mSpikes = cell(1,mitralNum);
-    
-    countResultsM = ones(1, mitralNum);
-    countResultsG = ones(1,granuleNum);
+    gSpikes = zeros(granuleNum,1);
     fileID = fopen('results6.txt','w');
 
     for t=1:length(tspan)     
@@ -338,15 +431,9 @@ function [mSpikeTrain, mVolt, gVolt, gSpikes] = simulator(network, mParam, gPara
         gFired = find(gV >= 25);  
         
         % record MC and GC spike times
-        for i = 1:length(gFired)
-            gSpikes{gFired(i)}(countResultsG(gFired(i))) = t;
-            countResultsG(gFired(i)) = countResultsG(gFired(i))+1;
+        if t > 1667
+            gSpikes(gFired) = gSpikes(gFired) + 1;
         end
-        
-        for i = 1:length(mFired)
-            mSpikes{mFired(i)}(countResultsM(mFired(i))) = t;
-            countResultsM(mFired(i)) = countResultsM(mFired(i))+1;
-        end 
         mSpikeTrain(mFired,t) = 1;
         
         % record voltage
@@ -384,11 +471,10 @@ function [mSpikeTrain, mVolt, gVolt, gSpikes] = simulator(network, mParam, gPara
         mIntegG(:,gFired) = mIntegG(:,gFired) + network(:,gFired)*W.*(1-mIntegG(:,gFired));
         
         % calculate external and synaptic currents 
-        [mIreturn, gIreturn, mIntegG,mIntegA,mIntegN,mX,gIntegA,gIntegN, gX, gIntegAx, gIntegNx, gXx] = current(mV, gV, mag,...
-        mIntegG, mIntegA, mIntegN, mX, gIntegA, gIntegN, gX, gIntegAx, gIntegNx, gXx,...
-        mGABA, tauG_m, mAMPA, tauA_m, mNMDA, tauNr_m, tauNd_m,...
-        gAMPA, tauA_g, gNMDA, tauNr_g, tauNd_g,...
-        gAMPAx, tauAx_g, gNMDAx, tauNrx_g, tauNdx_g, TS);
+        [mIreturn, gIreturn, mIntegG, gIntegA,gIntegN, gX] = current(mV, gV, mag,...
+        mIntegG, gIntegA, gIntegN, gX,...
+        mGABA, tauG_m, ...
+        gAMPA, tauA_g, gNMDA, tauNr_g, tauNd_g, TS);
     
         mI = mI'+mIreturn;
         gI = gI'+gIreturn;
@@ -403,11 +489,10 @@ function [mSpikeTrain, mVolt, gVolt, gSpikes] = simulator(network, mParam, gPara
 end
 
 % updates the currents based on the gating variables
-function [mI, gI, mIG,mIA,mIN,Xm,gIA,gIN, Xg, gIAx, gINx, Xxg] = current(mV, gV, Mg,...
-        mIntegG, mIntegA, mIntegN, mX, gIntegA, gIntegN, gX, gIntegAx, gIntegNx, gXx,...
-        mGABA, tauG_m, mAMPA, tauA_m, mNMDA, tauNr_m, tauNd_m,...
-        gAMPA, tauA_g, gNMDA, tauNr_g, tauNd_g,...
-        gAMPAx, tauAx_g, gNMDAx, tauNrx_g, tauNdx_g, TS)
+function [mI, gI, mIG, gIA,gIN, Xg] = current(mV, gV, Mg,...
+        mIntegG, gIntegA, gIntegN, gX,...
+        mGABA, tauG_m, ...
+        gAMPA, tauA_g, gNMDA, tauNr_g, tauNd_g, TS)
     
       
         % inhibitory reversal potential
@@ -417,34 +502,20 @@ function [mI, gI, mIG,mIA,mIN,Xm,gIA,gIN, Xg, gIAx, gINx, Xxg] = current(mV, gV,
         Ee = 0;
         
         % alpha values for synaptic and external NMDA receptors
-        alphaM = 0.03;
         alphaG = 0.1;
-        alphaGx = 0.2;
 
         % calculate currents from gating variables
         Ig = -(mV-Ei) .* sum(mGABA .* mIntegG,2)';
-        Ia = -(mV-Ee) .* sum(mAMPA .* mIntegA,2)';
-        In = -(mV-Ee) .* (sum(mNMDA.*mIntegN,2)') .* 1./(1+exp(-0.062*mV)*Mg/3.57);
-        mI = Ig + Ia + In; 
+        mI = Ig; 
         Ja = -(gV-Ee) .* sum(gAMPA.*gIntegA);
         Jn = -(gV-Ee) .* (sum(gNMDA.*gIntegN).* 1./(1+exp(-0.062*gV)*Mg/3.57));
-        Jax = -(gV-Ee) .* sum(gAMPAx .* gIntegAx,2)';
-        Jnx = -(gV-Ee) .* (sum(gNMDAx.*gIntegNx,2)'.* 1./(1+exp(-0.062*gV)*Mg/3.57));
-        gI = Ja + Jn + Jax + Jnx;       
+        gI = Ja + Jn;       
         
         % update gating variables
         mIG = mIntegG ./ exp(TS./tauG_m);
-        mIA = mIntegA ./ exp(TS./tauA_m);
-        mIN = mIntegN + TS*(-mIntegN./tauNd_m + alphaM*mX.*(1-mIntegN));
-        Xm = mX ./ exp(TS./tauNr_m);
-        
         gIA = gIntegA ./ exp(TS./tauA_g);
         gIN = gIntegN + TS*(-gIntegN./tauNd_g + alphaG*gX.*(1-gIntegN));
         Xg = gX ./ exp(TS./tauNr_g); 
-        
-        gIAx = gIntegAx ./ exp(TS./tauAx_g);
-        gINx = gIntegNx + TS*(-gIntegNx./tauNdx_g + alphaGx*gXx.*(1-gIntegNx));
-        Xxg = gXx ./ exp(TS./tauNrx_g);
 end     
         
         
@@ -468,36 +539,6 @@ function [mitV, mitU, graV, graU] =  izhikevich(mV, mU, gV, gU, mI, gI, mFired, 
      
         mitV = mV; mitU = mU;  
         graV = gV; graU = gU; 
-end
-
-function [gAMPA, gNDMA] = synapticPlasticity(mFired, gAMPA, gNDMA,... 
-network, mSpikes, gSpikes)
-
-    % find the MCs and GCs corresponding to the synapses
-    [MCs, GCs] = find(network(mFired,:));
-    
-    for i = 1:length(MCs)
-        mc = MCs(i);
-        gc = GCs(i);
-
-        sum = 0;
-        for j = 1:len(mSpikes(mc))
-            for k = 1:len(gSpikes(gc))
-                diff = gSpikes(k) - mSpikes(j);
-                A = 0.01;
-                tau = 0.01;
-                if diff > 0
-                    W = @(x) A * exp(-x/tau);
-                else
-                    W = @(x) -A * exp(x/tau);
-                end
-                sum = sum + W(diff);
-            end
-        end
-        gAMPA(mc, gc) = gAMPA(mc, gc) + sum/2;
-        gNDMA(mc, gc) = gNDMA(mc, gc) + sum/2;
-    end
-
 end
 
 

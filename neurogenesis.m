@@ -1,11 +1,17 @@
-load data264/fullNetwork.mat;
-load data264/glomeruli.mat;
-load data264/granuleCells.mat;
-load data264/mitralCells.mat;
-load data264/distance.mat;
+
+rmax = 50;
+
+load(sprintf('data%d/fullNetwork.mat', rmax));
+load(sprintf('data%d/glomeruli.mat', rmax));
+load(sprintf('data%d/granuleCells.mat',rmax));
+load(sprintf('data%d/mitralCells.mat',rmax));
+load(sprintf('data%d/distance.mat',rmax));
 
 s = size(network);
+
 granuleNum = max(s);
+granuleindex = granuleNum;
+
 mitralNum = min(s);
 
 neurogen_mode = "Betweenness";
@@ -51,7 +57,6 @@ while length(granuleArray) < granuleNum + neurogenNum
             % calculate the probability of synapse assuming a Poisson
             % distribution
             prob = 1 - exp(-lambda);
-            
             % sample the given probability and assign synaptic distance
             if rand < prob
                 tempNet(j,1) = 1;
@@ -81,7 +86,6 @@ while length(granuleArray) < granuleNum + neurogenNum
            synmitrals = synmitrals(randperm(length(synmitrals)));
            tempNet(:) = 0;
            tempNet(synmitrals(1:newGranule.availableSpines)) = 1;
-           disp(newGranule.availableSpines+1);
            tempDistance(synmitrals(newGranule.availableSpines+1:totalSynapses)) = -1;
         end
         % update the GC index
@@ -96,5 +100,5 @@ while length(granuleArray) < granuleNum + neurogenNum
         granuleArray = [granuleArray newGranule];
     end
     
-    disp(length(granuleArray));
+    % disp(length(granuleArray));
 end
