@@ -123,7 +123,11 @@ fodor = 6/1000; % 6 Hz sniff rate during odor presentation
 
 % file to write to keep track of how many trials have passed if you're
 % impatient like me
-fileID = fopen('trialResultsI.txt','w');
+fileID = fopen('trialResultsS.txt','w');
+
+% for setting granule cell
+rmax = 300;
+
 
 % Input currents and phases for odor presentation
 odorAmpMatrix = zeros(mitralNum,numOdors);
@@ -132,8 +136,6 @@ odorPhaseMatrix = zeros(mitralNum, numOdors);
 % glomeruli for your odors, where each row is a different odor
 odorIndicesMatrix = zeros(numOdors, length(glomeruli));
 
-% for setting granule cell
-rmax = 300;
 
 % Generate your odors
 % for i = 1:numOdors
@@ -179,6 +181,47 @@ end
 
 
 
+% Input currents and phases for odor presentation
+odorAmpMatrix2 = zeros(mitralNum,numOdors);
+odorPhaseMatrix2 = zeros(mitralNum, numOdors);
+
+% glomeruli for your odors, where each row is a different odor
+odorIndicesMatrix2 = zeros(numOdors, length(glomeruli));
+
+
+% % Generate your odors
+% for i = 1:numOdors
+%     J = randperm(glomNum);
+%     odorGlomNum = 4 + randi(6);    
+%     for j = 1:odorGlomNum
+%         odorIndicesMatrix2(i,J(j)) = 1;
+%     end
+%     [odorAmpMatrix2(:,i), odorPhaseMatrix2(:,i)] = odorGenerator(odorIndicesMatrix2(i,:), glomArray, glomeruli, mitralNum);
+% end
+
+odorGlomNum = 8;
+odorIndices2 = zeros(numOdors, odorGlomNum);
+for i = 1:10
+    odorIndices2(i,:) = 16+(i-1):23+(i-1);
+end
+
+for t = 1:numOdors
+    for i = 1:length(glomeruli)
+        R = find(glomArray == i);
+        if sum(ismember(i, odorIndices2(t,:)))
+            odorAmpMatrix2(R,t) = odor_Amp_basis(R);
+            odorPhaseMatrix2(R,t) = odor_Phase_basis(R);
+        else
+            mean_phase = 2*pi*rand;
+            meanInput = rand*150;
+            odorAmpMatrix2(R,t) = normrnd(meanInput,meanInput/5,length(R),1);
+            odorPhaseMatrix2(R,t) = normrnd(mean_phase,pi/4,length(R),1);
+        end
+    end
+end
+
+
+
 % Generates a feedback pattern to GCs (ignore for now)
 FB_frac = 0.25; % fraction of GCs targeted
 FBnum = round(FB_frac*granuleNum); 
@@ -188,7 +231,7 @@ FB_cells = GC_order(1:FBnum); % select GCs
 gFeedback1(FB_cells) = rand(length(FB_cells),1) * 100; % set feedback strength to each GC
 
 beginOdor = 0/fnorm; % adjust numerator for how much respiraation (i.e. no odor breaths) you want before odor input
-endOdor = beginOdor + 2/fodor; % adjust numerator for how long you want the sniffing to go on - I recommend at least 2
+endOdor = beginOdor + 3/fodor; % adjust numerator for how long you want the sniffing to go on - I recommend at least 2
 beginFB = 0; % when do you want feedback to begin - ignore for now
 
 addFrac = 0.1;
@@ -198,12 +241,20 @@ targetNum = round(addFrac * totalAddNum);
 networkList = cell(1,numGeneses);
 
 for gene = 1:numGeneses   
+    if gene <= 5
+        odorAmpMatrixUsed = odorAmpMatrix;
+        odorPhaseMatrixUsed = odorPhaseMatrix;
+    else
+        odorAmpMatrixUsed = odorAmpMatrix2;
+        odorPhaseMatrixUsed = odorPhaseMatrix2;
+    end
+    
     networkList{gene} = network;
     gTotal = zeros(granuleNum,1);
     for odor = 1:numOdors
         % simulate without feedback
-        [spikeTrainRecord{gene, odor}, gSpikes{gene,odor}]  = simulator(network, mParam, gParam,...
-            mResp_Amp, mResp_Phase, fnorm, odorAmpMatrix(:,odor), odorPhaseMatrix(:,odor), fodor, zeros(granuleNum,1), beginOdor, beginFB, endOdor,...
+        [spikeTrainRecord{gene, odor}, ~, ~, gSpikes{gene,odor}]  = simulator(network, mParam, gParam,...
+            mResp_Amp, mResp_Phase, fnorm, odorAmpMatrixUsed(:,odor), odorPhaseMatrixUsed(:,odor), fodor, zeros(granuleNum,1), beginOdor, beginFB, endOdor,...
             mGABA, tauG_m,...
             tauA_g, tauNr_g, tauNd_g, gAMPA, gNMDA);
         
@@ -217,11 +268,36 @@ for gene = 1:numGeneses
         
         formatSpec = 'Trial is %d,%d\n';
         fprintf(fileID, formatSpec, gene, odor);
+        
+        gTotal = gTotal + gSpikes{gene,odor};
     end
+    
+    if gene > 1
+        cutoff = mean(gTotal);
+        removeIndices = find(gTotal < cutoff); 
+        removeIndices(removeIndices < oldGranuleNum) = [];
+        network(:,removeIndices) = [];
+        distance(:,removeIndices) = [];
+        gParam(:,removeIndices) = [];
+        
+        tauA_g(:, removeIndices) = [];
+        tauNr_g(:, removeIndices) = [];
+        tauNd_g(:, removeIndices) = [];
+        gAMPA(:, removeIndices) = [];
+        gNMDA(:, removeIndices) = [];
+        mGABA(:, removeIndices) = [];
+        tauG_m(:, removeIndices) = [];
+        
+        [~,granuleNum] = size(network);
+       
+    end
+    
+
     
     network = [network zeros(mitralNum,targetNum)];
     distance = [distance ones(mitralNum,targetNum)*-1];
     addedNum = 1;
+    
     
     while addedNum <= targetNum
     
@@ -318,7 +394,6 @@ for gene = 1:numGeneses
     mGABA = [mGABA normrnd(0.13,0.13/10,mitralNum,targetNum).* exp(-distance(:,granuleNum+1:granuleNum+targetNum)./LmatT)]; 
     tauG_m = [tauG_m normrnd(18,18/10,mitralNum, targetNum)];
     
-
         % Establish the intrinsic granule cell parameters
     for i = granuleNum+1:granuleNum+targetNum
         while gParam(1,i) >= gParam(2,i) || gParam(2,i) - gParam(1,i) < 20
@@ -353,10 +428,12 @@ for gene = 1:numGeneses
     gParam(7,granuleNum+1:granuleNum+targetNum) = normrnd(1.2,1.2/10,1,targetNum); %d_g (Izhikevich parameter d)
     gParam(8,granuleNum+1:granuleNum+targetNum) = normrnd(48,48/10,1,targetNum); %cap_g (capacitance)
     
+    oldGranuleNum = granuleNum;
     granuleNum = granuleNum + targetNum; %update total number of GCs in the network
     
-    fname = sprintf('immortalResultsSimpleOdors.mat');
-    save(fname,'spikeTrainRecord','odorAmpMatrix', 'odorPhaseMatrix', 'gSpikes','networkList','-v7.3');
+    
+    fname = sprintf('switchResultsSimpleOdors.mat');
+    save(fname,'spikeTrainRecord','odorAmpMatrix', 'odorPhaseMatrix', 'odorAmpMatrix2', 'odorPhaseMatrix2','gSpikes','networkList','-v7.3');
 end
 
     
@@ -397,7 +474,7 @@ end
 
 
 
-function [mSpikeTrain, gSpikes] = simulator(network, mParam, gParam,...
+function [mSpikeTrain, mVolt, gVolt, gSpikes] = simulator(network, mParam, gParam,...
     mResp_Amp, mResp_Phase, fnorm, mOdor_Amp, mOdor_Phase, fodor, gFeedback, beginOdor, beginFB, endOdor,...
     mGABA, tauG_m,...
     tauA_g, tauNr_g, tauNd_g, gAMPA, gNMDA)
@@ -413,6 +490,9 @@ function [mSpikeTrain, gSpikes] = simulator(network, mParam, gParam,...
     
     % Number of mitral cells and granule cells
     [mitralNum,granuleNum] = size(network);
+    
+    % set number of GCs to record for voltage traces
+    granuleNumRecord = 1000;
     
     % unpack MC and GC parameters
     mVr = mParam(1,:); mVt = mParam(2,:);
@@ -436,17 +516,21 @@ function [mSpikeTrain, gSpikes] = simulator(network, mParam, gParam,...
     gV = ones(1, granuleNum) .* gVr;
     gU = zeros(1,granuleNum);
     
-
+    % set variables to record voltages
+    mVolt = zeros(mitralNum,length(tspan));
+    gVolt = zeros(granuleNumRecord, length(tspan));
+    
     % set synaptic gating variables 
     mIntegG = zeros(mitralNum, granuleNum);
     gIntegN = zeros(mitralNum, granuleNum);
     gIntegA = zeros(mitralNum, granuleNum);
     gX = zeros(mitralNum, granuleNum);
     
+    
     % record MC and GC spikes
     mSpikeTrain = zeros(mitralNum,length(tspan));
     gSpikes = zeros(granuleNum,1);
-    fileID = fopen('results7.txt','w');
+    fileID = fopen('results8.txt','w');
 
     for t=1:length(tspan)     
 
@@ -459,7 +543,12 @@ function [mSpikeTrain, gSpikes] = simulator(network, mParam, gParam,...
             gSpikes(gFired) = gSpikes(gFired) + 1;
         end
         mSpikeTrain(mFired,t) = 1;
- 
+        
+        % record voltage
+        mVolt(:,t) = mV;
+        
+        % record GC voltage
+        gVolt(:,t) = gV(1:granuleNumRecord);   
 
         % if in odor presentation, give odor input, otherwise give regular respiratory input 
         if tspan(t) > beginOdor && tspan(t) <= endOdor          

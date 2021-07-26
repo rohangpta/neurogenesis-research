@@ -135,16 +135,47 @@ odorIndicesMatrix = zeros(numOdors, length(glomeruli));
 % for setting granule cell
 rmax = 300;
 
-% Generate your odors
-for i = 1:numOdors
-    J = randperm(glomNum);
-    odorGlomNum = 4 + randi(6);    
-    for j = 1:odorGlomNum
-        odorIndicesMatrix(i,J(j)) = 1;
-    end
-    [odorAmpMatrix(:,i), odorPhaseMatrix(:,i)] = odorGenerator(odorIndicesMatrix(i,:), glomArray, glomeruli, mitralNum);
+% % Generate your odors
+% for i = 1:numOdors
+%     J = randperm(glomNum);
+%     odorGlomNum = 4 + randi(6);    
+%     for j = 1:odorGlomNum
+%         odorIndicesMatrix(i,J(j)) = 1;
+%     end
+%     [odorAmpMatrix(:,i), odorPhaseMatrix(:,i)] = odorGenerator(odorIndicesMatrix(i,:), glomArray, glomeruli, mitralNum);
+% end
+
+odor_Amp_basis = zeros(mitralNum,1);
+odor_Phase_basis = zeros(mitralNum,1);
+for i = 1:length(glomeruli)
+    mean_phase = 2*pi*rand;
+    meanInput = 150+450*rand;
+    R = find(glomArray == i);
+    odor_Amp_basis(R) = normrnd(meanInput,meanInput/5,length(R),1);
+    odor_Phase_basis(R) = normrnd(mean_phase,pi/4,length(R),1);   
+    
 end
 
+odorGlomNum = 8;
+odorIndices = zeros(numOdors, odorGlomNum);
+for i = 1:10
+    odorIndices(i,:) = 1+(i-1):8+(i-1);
+end
+
+for t = 1:numOdors
+    for i = 1:length(glomeruli)
+        R = find(glomArray == i);
+        if sum(ismember(i, odorIndices(t,:)))
+            odorAmpMatrix(R,t) = odor_Amp_basis(R);
+            odorPhaseMatrix(R,t) = odor_Phase_basis(R);
+        else
+            mean_phase = 2*pi*rand;
+            meanInput = rand*150;
+            odorAmpMatrix(R,t) = normrnd(meanInput,meanInput/5,length(R),1);
+            odorPhaseMatrix(R,t) = normrnd(mean_phase,pi/4,length(R),1);
+        end
+    end
+end
 
 
 % Generates a feedback pattern to GCs (ignore for now)
@@ -159,7 +190,7 @@ beginOdor = 0/fnorm; % adjust numerator for how much respiraation (i.e. no odor 
 endOdor = beginOdor + 2/fodor; % adjust numerator for how long you want the sniffing to go on - I recommend at least 2
 beginFB = 0; % when do you want feedback to begin - ignore for now
 
-replaceFrac = 0.1;
+replaceFrac = 0.25;
 replaceNum = round(replaceFrac*granuleNum);
 
 networkList = cell(1,numGeneses);
@@ -194,9 +225,9 @@ for gene = 1:numGeneses
     network(:,replaceIndices) = 0;
     distance(:,replaceIndices) = 0;
     
-    addedNum = 0;
+    addedNum = 1;
     
-    while addedNum < replaceNum
+    while addedNum <= replaceNum
     
         % generate a new GC and assign properties
         newGranule = granule();
@@ -272,8 +303,8 @@ for gene = 1:numGeneses
 
             % assign the new connections to the appropriate entry in the
             % network for the GC
-            network(:, replaceIndices(i)) = tempNet;
-            distance(:,replaceIndices(i)) = tempDistance;
+            network(:, replaceIndices(addedNum)) = tempNet;
+            distance(:,replaceIndices(addedNum)) = tempDistance;
 
             % update the GC array
             addedNum = addedNum + 1;
@@ -325,7 +356,7 @@ for gene = 1:numGeneses
     mGABA(:, replaceIndices) = normrnd(0.13,0.13/10,mitralNum,replaceNum).* exp(-distance(:,replaceIndices)./Lmat(:,replaceIndices)); % GABA adjusted for distance
     tauG_m(:,replaceIndices) = normrnd(18,18/10, mitralNum, replaceNum); % tau_GABA
 
-    fname = sprintf('controlResults.mat');
+    fname = sprintf('controlResultsSimpleOdors.mat');
     save(fname,'spikeTrainRecord','odorAmpMatrix', 'odorPhaseMatrix', 'gSpikes','networkList','-v7.3');
 end
 
