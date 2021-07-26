@@ -1,9 +1,9 @@
 rng shuffle
 
 % Load network and distance matrices and glomeruli
-load('.mat') % Load your network data
-load('.mat') % Load you distance data
-load('.mat') % Load your glomeruli data
+load('data69/fullNetworkControl.mat') % Load your network data
+load('data69/distanceControl.mat') % Load you distance data
+load('data69/glomeruliControl.mat') % Load your glomeruli data
 
 % Number of mitral cells and granule cells
 [mitralNum,granuleNum] = size(network);
@@ -128,7 +128,7 @@ for i = 1:length(glomeruli)
 end
 
 % number of odors you want to make
-numOdors = 10;
+numOdors = 1;
 
 % cell array to hold the spike trains (like a python list)
 spikeTrainRecord = cell(1,numOdors);
@@ -178,7 +178,8 @@ for t = 1:numOdors
     end
 end
 
-
+odorMatrixPhase = odorPhaseMatrix;
+odorMatrixAmp = odorAmpMatrix;
     
 
 % Generates a feedback pattern to GCs (ignore for now)
@@ -194,8 +195,8 @@ for odor = 1:numOdors
     beginOdor = 0/fnorm; % adjust numerator for how much respiraation (i.e. no odor breaths) you want before odor input
     endOdor = beginOdor + 6/fodor; % adjust numerator for how long you want the sniffing to go on - I recommend at least 2
     beginFB = 0; % when do you want feedback to begin - ignore for now
-
-
+  
+    
     % simulate without feedback
     [spikeTrainRecord{odor}, ~, ~, ~]  = simulator(network, mParam, gParam,...
         mResp_Amp, mResp_Phase, fnorm, odorMatrixAmp(:,odor), odorMatrixPhase(:,odor), fodor, zeros(granuleNum,1), beginOdor, beginFB, endOdor,...
@@ -329,10 +330,9 @@ function [mSpikeTrain, mVolt, gVolt, gSpikes] = simulator(network, mParam, gPara
     
     countResultsM = ones(1, mitralNum);
     countResultsG = ones(1,granuleNum);
-    fileID = fopen('results6.txt','w');
+    fileID = fopen('time_passed.txt','w');
 
-    for t=1:length(tspan)     
-
+    for t=1:length(tspan)
         % find all MC and GCs which have spiked
         mFired = find(mV >= 30);     
         gFired = find(gV >= 25);  
@@ -397,8 +397,14 @@ function [mSpikeTrain, mVolt, gVolt, gSpikes] = simulator(network, mParam, gPara
         [mV, mU, gV, gU] = izhikevich(mV, mU, gV, gU, mI, gI, mFired, gFired, TS,...
                 a_m, b_m, c_m, d_m, k_m, a_g, b_g, c_g, d_g, k_g, mVr, mVt, gVr, gVt, Cm, Cg);  
         
+        % update conductance as per synaptic plasticity
+        
+        [gAMPA, gNMDA] = synapticPlasticity(mFired, gAMPA, gNMDA,...
+            network, mSpikes, gSpikes);
+
         formatSpec = 'Time is %1.2f\n';
         fprintf(fileID, formatSpec, tspan(t));
+       
     end
 end
 
@@ -470,32 +476,38 @@ function [mitV, mitU, graV, graU] =  izhikevich(mV, mU, gV, gU, mI, gI, mFired, 
         graV = gV; graU = gU; 
 end
 
-function [gAMPA, gNDMA] = synapticPlasticity(mFired, gAMPA, gNDMA,... 
+function [gAMPA, gNMDA] = synapticPlasticity(mFired, gAMPA, gNMDA,... 
 network, mSpikes, gSpikes)
 
-    % find the MCs and GCs corresponding to the synapses
-    [MCs, GCs] = find(network(mFired,:));
-    
+    % find the MCs and GCs corresponding to the synapsesa
+    MCs = mFired;
     for i = 1:length(MCs)
         mc = MCs(i);
-        gc = GCs(i);
+        GCs = find(network(mc, :));
+        for m = 1:length(GCs)
+            gc = GCs(m);
+            sum1 = 0;
+            sum2 = 0;
+            for j = 1:length(mSpikes{mc})
+                for k = 1:length(gSpikes{gc})
+                    diff = (gSpikes{gc}(k) - mSpikes{mc}(j))/1000;
 
-        sum = 0;
-        for j = 1:len(mSpikes(mc))
-            for k = 1:len(gSpikes(gc))
-                diff = gSpikes(k) - mSpikes(j);
-                A = 0.01;
-                tau = 0.01;
-                if diff > 0
-                    W = @(x) A * exp(-x/tau);
-                else
-                    W = @(x) -A * exp(x/tau);
+                    A1 = gAMPA(mc, gc) * 0.015;
+                    A2 = gNMDA(mc, gc) * 0.015;
+                    % arbitrary params to 'slow down' hebbian updates
+                    tau = 0.1;
+                    if diff > 0
+                        W = @(x) exp(-x/tau);
+                    else
+                        W = @(x) -exp(x/tau);
+                    end
+                    sum1 = sum1 + A1 * W(diff);
+                    sum2 = sum2 + A2 * W(diff);
                 end
-                sum = sum + W(diff);
             end
+            gAMPA(mc, gc) = gAMPA(mc, gc) + sum1;
+            gNMDA(mc, gc) = gNMDA(mc, gc) + sum2;
         end
-        gAMPA(mc, gc) = gAMPA(mc, gc) + sum/2;
-        gNDMA(mc, gc) = gNDMA(mc, gc) + sum/2;
     end
 
 end
